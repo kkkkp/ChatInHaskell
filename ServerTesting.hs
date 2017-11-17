@@ -1,8 +1,4 @@
-{-# LANGUAGE
-  TypeFamilies
-, FlexibleContexts
-#-}
-
+ 
 module ServerTesting where
 
 import qualified Data.Map as M
