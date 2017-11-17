@@ -17,7 +17,7 @@ data Message = JoinRoom Int
 
 data Address = Address {ip :: NS.HostName, port :: NS.ServiceName}
 
-data Chatroom = Chatroom {participates :: M String ClientStore}
+data Chatroom = Chatroom {participates :: M.Map String ClientStore}
 
 data ClientStore = ClientStore {nickName :: String, clientAddr :: Address, roomNum :: Int}
 

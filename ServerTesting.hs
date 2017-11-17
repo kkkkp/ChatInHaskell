@@ -1,4 +1,8 @@
- 
+{-# LANGUAGE
+  TypeFamilies
+, FlexibleContexts
+#-}
+
 module ServerTesting where
 
 import qualified Data.Map as M
@@ -11,9 +15,7 @@ data Message = JoinRoom Int
 newtype AbstractSocket =
   AbstractSocket { getAbstractSocket :: Int }
 
-{- Network.Socket -}
-
-class Monads m => MonadSocket m where
+class MonadSocket m where
   readFrom :: AbstractSocket -> m Message
   sendTo :: AbstractSocket -> Message -> m ()
 
