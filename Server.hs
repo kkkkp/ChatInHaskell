@@ -24,7 +24,7 @@ registerServer n addr = do
     return ()
 
 -- register a client with addr to grp 0 (defualt)
-registerClient ::Infra.Address -> StateT ServerStore IO ()
+registerClient :: Infra.Address -> StateT ServerStore IO ()
 registerClient = assignClient 0
 
 -- assign a client to a different group
@@ -46,6 +46,21 @@ multiCastToClient group msg = undefined
 -- multicast message to all servers (including itself)
 multiCastToServer :: Infra.Message -> StateT ServerStore IO ()
 multiCastToServer msg = undefined
+
+-- how to handle invalid input?
+-- use exceptT to handle invalid case?
+parse :: String -> Infra.Message
+parse input =
+    case words input of
+        "/join" : xs    -> Join 0
+        "/text" : xs    -> Text $ unwords xs
+        "/nick" : xs    -> Nick $ unwords xs
+        "/part" : []    -> Part
+        "/quit" : []    -> Quit
+        _               -> Quit
+
+toString :: Infra.Message -> String
+toString = undefined
 
 runServer :: IO ()
 runServer = undefined
