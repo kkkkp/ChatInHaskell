@@ -17,8 +17,32 @@ data Message = JoinRoom Int
 
 data Address = Address {ip :: NS.HostName, port :: NS.ServiceName}
 
-data Chatroom = Chatroom {participates :: M.Map String ClientStore}
+data ClientStore = ClientStore {nick :: String, room :: Int}
 
-data ClientStore = ClientStore {nickName :: String, clientAddr :: Address, roomNum :: Int}
+data Chatroom = Chatroom {usr :: M.Map Address ClientStore}
 
-data ServerStore = ServerStore {chatRooms :: [Chatroom], serverAddrs :: [Address]}
+data ServerStore = ServerStore {grp :: M.Map Int Chatroom, getAddr :: M.Map Int Address}
+
+
+-- register a server with id and addr
+registerServer :: Int -> Address -> StateT ServerStore IO ()
+registerServer n addr = do
+    server <- get
+
+    return ()
+
+-- register a client with addr to grp 0 (defualt)
+registerClient :: Address -> StateT ServerStore IO ()
+registerClient = assignClient 0
+
+-- assign a client to a different group
+assignClient :: Int -> Address -> StateT ServerStore IO ()
+assignClient n addr = undefined
+
+-- disconnect a client from the group
+partClient :: Int -> Address -> StateT ServerStore IO ()
+partClient n addr = undefined
+
+-- assign a client a nick name
+nickClient :: String -> Address -> StateT ServerStore IO ()
+nickClient nick addr = undefined
