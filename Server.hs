@@ -16,11 +16,14 @@ data Chatroom = Chatroom {usr :: M.Map Infra.Address ClientStore}
 data ServerStore = ServerStore {grp :: M.Map Int Chatroom, getAddr :: M.Map Int Infra.Address}
 
 
+-- TODO: how to use the State in the monad?
 -- register a server with id and addr
 registerServer :: Int -> Infra.Address -> StateT ServerStore IO ()
 registerServer n addr = do
     server <- get
-
+    -- let addrMap = getAddr server
+    -- ...
+    -- put $ server { getAddr = newAddrMap }
     return ()
 
 -- register a client with addr to grp 0 (defualt)
@@ -39,6 +42,12 @@ partClient group addr = undefined
 nickClient :: String -> Infra.Address -> StateT ServerStore IO ()
 nickClient nick addr = undefined
 
+errorClient :: Infra.Address -> StateT ServerStore IO ()
+errorClient addr = undefined
+
+deliverMsgToGroup :: Infra.Message -> StateT ServerStore IO ()
+deliverMsgToGroup msg = undefined
+
 -- multicast message to all clients in the given group
 multiCastToClient :: Int -> Infra.Message -> StateT ServerStore IO ()
 multiCastToClient group msg = undefined
@@ -47,8 +56,10 @@ multiCastToClient group msg = undefined
 multiCastToServer :: Infra.Message -> StateT ServerStore IO ()
 multiCastToServer msg = undefined
 
--- how to handle invalid input?
+-- TODO: how to handle invalid input?
+-- implement a type class of parser?
 -- use exceptT to handle invalid case?
+-- parse :: (MonadError String m) => String -> m Infra.Message
 parse :: String -> Infra.Message
 parse input =
     case words input of
@@ -60,8 +71,10 @@ parse input =
         _               -> Quit
 
 toString :: Infra.Message -> String
-toString = undefined
+toString (Text str) = str
+toString _          = "-ERR Not supported"
 
+-- should implement some kind of loop
 runServer :: IO ()
 runServer = undefined
 
