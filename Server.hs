@@ -12,9 +12,7 @@ import Network.Socket
 
 data ClientStore = ClientStore {nick :: String, room :: Int}
 
-data Chatroom = Chatroom {getUser :: M.Map SockAddr ClientStore}
-
-data ServerStore = ServerStore {getGroup :: M.Map Int Chatroom, getServer :: M.Map Int SockAddr}
+data ServerStore = ServerStore {sock :: Socket, getClient :: M.Map SockAddr ClientStore, getServer :: M.Map Int SockAddr}
 
 
 -- TODO: how to use the State in the monad?
@@ -30,42 +28,51 @@ registerServer n addr = do
 registerClient :: SockAddr -> StateT ServerStore IO ()
 registerClient = assignClient 0
 
--- assign a client to a different group helper
-assignClientHelper :: Int -> SockAddr -> M.Map Int Chatroom -> M.Map Int Chatroom
-assignClientHelper n addr groups = case M.lookup n groups of
-    Just room -> M.insert n (Chatroom (M.insert addr (ClientStore (show addr) n) (getUser room))) groups
-    Nothing   -> M.insert n (Chatroom (M.insert addr (ClientStore (show addr) n) M.empty)) groups
-
 -- assign a client to a different group
 assignClient :: Int -> SockAddr -> StateT ServerStore IO ()
 assignClient n addr = do
     store <- get
-    let groups = getGroup store
-    put $ store {getGroup = assignClientHelper n addr groups}
+    let client = ClientStore (show addr) n
+    let map    = getClient store
+    put $ store {getClient = M.insert addr client map}
     return ()
 
 -- disconnect a client from the group
-partClient :: Int -> SockAddr -> StateT ServerStore IO ()
-partClient group addr = do
+partClient :: SockAddr -> StateT ServerStore IO ()
+partClient addr = do
+    store <- get
+    let map = getClient store
+    put $ store {getClient = M.delete addr map}
     return ()
+
+nickClientHelper :: String -> SockAddr -> M.Map SockAddr ClientStore -> ClientStore
+nickClientHelper name addr map = case M.lookup addr map of
+    Just c  -> c {nick = name}
+    Nothing -> ClientStore name 0
 
 -- assign a client a nick name
 nickClient :: String -> SockAddr -> StateT ServerStore IO ()
-nickClient nick addr = undefined
+nickClient name addr = do
+    store <- get
+    let map    = getClient store
+    let client = nickClientHelper name addr map
+    put $ store {getClient = M.insert addr client map}
+    return ()
 
 errorClient :: SockAddr -> StateT ServerStore IO ()
-errorClient addr = undefined
-
-deliverMsgToGroup :: Infra.Message -> StateT ServerStore IO ()
-deliverMsgToGroup msg = undefined
+errorClient addr = do
+    return ()
 
 -- multicast message to all clients in the given group
-multiCastToClient :: Int -> Infra.Message -> StateT ServerStore IO ()
-multiCastToClient group msg = undefined
+multiCastToClient :: Int -> String -> StateT ServerStore IO ()
+multiCastToClient n msg = do
+    store <- get
+    return ()
 
 -- multicast message to all servers (including itself)
-multiCastToServer :: Infra.Message -> StateT ServerStore IO ()
-multiCastToServer msg = undefined
+multiCastToServer :: String -> StateT ServerStore IO ()
+multiCastToServer msg = do
+    return ()
 
 -- TODO: how to handle invalid input?
 -- implement a type class of parser?
@@ -87,7 +94,9 @@ toString _          = "-ERR Not supported"
 
 -- should implement some kind of loop
 runServer :: IO ()
-runServer = undefined
+runServer = do
+    return ()
 
 main :: IO ()
-main = runServer
+main = do
+    return ()
