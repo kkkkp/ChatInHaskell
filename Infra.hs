@@ -14,10 +14,8 @@ data Message = Join Int
              | Quit
     deriving (Show, Eq)
 
-data Address = Address {ip :: NS.HostName, port :: NS.ServiceName}
-
-readFrom :: Address -> IO Message
+readFrom :: SockAddr -> IO Message
 readFrom addr = undefined
 
-sendTo :: Address -> Message -> IO ()
+sendTo :: SockAddr -> Message -> IO ()
 sendTo addr msg = undefined

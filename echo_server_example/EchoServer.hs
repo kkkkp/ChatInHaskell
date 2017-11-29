@@ -12,18 +12,18 @@ maxline = 1500
 
 main :: IO ()
 main = do
+           putStrLn "Server starts..."
            echoserver
            exitImmediately ExitSuccess
 
 -- how to set useability?
 echoserver :: IO ()
 echoserver = do
-          withSocketsDo $ do
-              sock <- socket AF_INET Datagram 0
-              setSocketOption sock ReuseAddr 1
-              setSocketOption sock ReusePort 1
-              bindSocket sock (SockAddrInet echoPort iNADDR_ANY)
-              socketEcho sock
+          sock <- socket AF_INET Datagram 0
+          setSocketOption sock ReuseAddr 1
+          setSocketOption sock ReusePort 1
+          bindSocket sock (SockAddrInet echoPort iNADDR_ANY)
+          socketEcho sock
 
 
 socketEcho :: Socket -> IO ()
@@ -31,7 +31,7 @@ socketEcho sock = do
           (mesg, recv_count, client) <- recvFrom sock maxline
           case mesg of
             "/kill\n" -> do
-                      putStrLn "Server closed!"
+                      putStrLn "Server closed..."
             _       -> do
                       putStr $ "S: " ++ mesg
                       send_count <- sendTo sock ((show client) ++ ": " ++ mesg) client
