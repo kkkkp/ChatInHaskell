@@ -12,17 +12,17 @@ import Network.Socket
 
 data ClientStore = ClientStore {nick :: String, room :: Int}
 
-data ServerStore = ServerStore {sock :: Socket, getClient :: M.Map SockAddr ClientStore, getServer :: M.Map Int SockAddr}
+data ServerStore = ServerStore {getSock :: Socket, getClient :: M.Map SockAddr ClientStore, getServer :: M.Map Int SockAddr}
 
+port    = 4000
+maxline = 1500
 
--- TODO: how to use the State in the monad?
 -- register a server with id and addr
 registerServer :: Int -> SockAddr -> StateT ServerStore IO ()
 registerServer n addr = do
     store <- get
     let serverAddr = getServer store
     put $ store {getServer = M.insert n addr serverAddr}
-    return ()
 
 -- register a client with addr to grp 0 (defualt)
 registerClient :: SockAddr -> StateT ServerStore IO ()
@@ -35,7 +35,6 @@ assignClient n addr = do
     let client = ClientStore (show addr) n
     let map    = getClient store
     put $ store {getClient = M.insert addr client map}
-    return ()
 
 -- disconnect a client from the group
 partClient :: SockAddr -> StateT ServerStore IO ()
@@ -43,7 +42,6 @@ partClient addr = do
     store <- get
     let map = getClient store
     put $ store {getClient = M.delete addr map}
-    return ()
 
 nickClientHelper :: String -> SockAddr -> M.Map SockAddr ClientStore -> ClientStore
 nickClientHelper name addr map = case M.lookup addr map of
@@ -57,22 +55,45 @@ nickClient name addr = do
     let map    = getClient store
     let client = nickClientHelper name addr map
     put $ store {getClient = M.insert addr client map}
-    return ()
 
 errorClient :: SockAddr -> StateT ServerStore IO ()
 errorClient addr = do
     return ()
 
 -- multicast message to all clients in the given group
+-- TODO: check size of sent mesg
 multiCastToClient :: Int -> String -> StateT ServerStore IO ()
 multiCastToClient n msg = do
     store <- get
+    let map  = getClient store
+    let sock = getSock store
+    _ <- lift $ M.traverseWithKey (send sock msg) map
     return ()
+    where
+        send :: Socket -> String -> SockAddr -> ClientStore -> IO ()
+        send sock msg addr client = do
+            count <- sendTo sock ((nick client) ++ ": " ++ msg) addr
+            return ()
+
+init :: Socket -> StateT ServerStore IO ()
+init sock = do
+    store <- get
+    put $ store {getSock = sock}
+
 
 -- multicast message to all servers (including itself)
-multiCastToServer :: String -> StateT ServerStore IO ()
-multiCastToServer msg = do
+multiCastToServer :: Int -> String -> StateT ServerStore IO ()
+multiCastToServer n msg = do
+    store <- get
+    let map  = getServer store
+    let sock = getSock store
+    _ <- lift $ M.traverseWithKey (send sock n msg) map
     return ()
+    where
+        send :: Socket -> Int -> String -> Int -> SockAddr -> IO ()
+        send sock n msg _ addr = do
+            count <- sendTo sock ((show n) ++ "$ " ++ msg) addr
+            return ()
 
 -- TODO: how to handle invalid input?
 -- implement a type class of parser?
@@ -93,10 +114,38 @@ toString (Text str) = str
 toString _          = "-ERR Not supported"
 
 -- should implement some kind of loop
-runServer :: IO ()
-runServer = do
-    return ()
+runServer :: Socket -> IO ()
+runServer sock = do
+    (msg, recv_count, client) <- recvFrom sock maxline
+    let mesg = (unwords . lines) msg
+    putStrLn ("S: " ++ mesg)
+    case mesg of
+        "/quit" -> do
+            putStrLn "S: closing..."
+        "/part" -> do
+            putStrLn "S: parting..."
+            runServer sock
+        "/join" -> do
+            putStrLn "S: joining..."
+            runServer sock
+        "/nick" -> do
+            putStrLn "S: nicking..."
+            runServer sock
+        "/text" -> do
+            putStrLn "S: texting..."
+            runServer sock
+        text    -> do
+            putStrLn $ "S: recving... " ++ text
+            runServer sock
+
 
 main :: IO ()
 main = do
+    sock <- socket AF_INET Datagram 0
+    setSocketOption sock ReuseAddr 1
+    setSocketOption sock ReusePort 1
+    bindSocket sock (SockAddrInet port iNADDR_ANY)
+    putStrLn "Server starting..."
+    runServer sock
+    putStrLn "Server closing..."
     return ()
