@@ -72,7 +72,7 @@ multiCastToClient n msg = do
     where
         send :: Socket -> String -> SockAddr -> ClientStore -> IO ()
         send sock msg addr client = do
-            count <- sendTo sock ((nick client) ++ ": " ++ msg) addr
+            count <- sendTo sock (msg ++ "\n") addr
             return ()
 
 -- multicast message to all servers (including itself)
@@ -86,7 +86,7 @@ multiCastToServer n msg = do
     where
         send :: Socket -> Int -> String -> Int -> SockAddr -> IO ()
         send sock n msg _ addr = do
-            count <- sendTo sock ((show n) ++ "$ " ++ msg) addr
+            count <- sendTo sock msg addr
             return ()
 
 -- TODO: how to handle invalid input?
@@ -97,15 +97,22 @@ parse :: String -> Infra.Message
 parse input =
     case words input of
         "/join" : xs    -> Join 0
-        "/text" : xs    -> STxt 0 $ unwords xs
+        "$text" : xs    -> STxt 0 $ unwords xs
         "/nick" : xs    -> Nick $ unwords xs
         "/part" : []    -> Part
         "/quit" : []    -> Quit
+        "$kill" : []    -> Kill
         other           -> Text $ unwords other
 
-toString :: Infra.Message -> String
-toString (Text str) = str
-toString _          = "-ERR Not supported"
+getRoom :: ServerStore -> SockAddr -> Int
+getRoom store addr = case M.lookup addr (getClient store) of
+    Just client -> room client
+    Nothing     -> -1
+
+format :: String -> ServerStore -> SockAddr -> String
+format msg store addr = case M.lookup addr (getClient store) of
+    Just client -> "$text " ++ (nick client) ++ ": " ++ msg ++ "\n"
+    Nothing     -> "$text " ++ (show addr) ++ ": " ++ msg ++ "\n"
 
 -- should implement some kind of loop
 runServer :: ServerStore -> IO ()
@@ -113,25 +120,43 @@ runServer store = do
     let sock = getSock store
     (msg, recv_count, client) <- recvFrom sock maxline
     let mesg = (unwords . lines) msg
+    let roomID    = getRoom store client
     putStrLn ("S: " ++ mesg)
     case parse mesg of
-        Quit        -> do
+        Kill        -> do
             putStrLn "S: closing..."
+        Quit        -> do
+            putStrLn "S: quitting..."
+            _ <- sendTo sock ("+OK you are disconnected\n") client
+            runServer store
         Part        -> do
             putStrLn "S: parting..."
-            runServer store
+            (_, store') <- runStateT (partClient client) $ store
+            _ <- sendTo sock ("+OK you part from #" ++ (show roomID) ++ " and join #0\n") client
+            runServer store'
         Join n      -> do
             putStrLn "S: joining..."
-            runServer store
+            (_, store') <- runStateT (registerClient client) $ store
+            _ <- sendTo sock ("+OK you join to #" ++ (show n) ++ "\n") client
+            runServer store'
         Nick name   -> do
             putStrLn "S: nicking..."
-            runServer store
+            (_, store') <- runStateT (nickClient name client) $ store
+            _ <- sendTo sock ("+OK you nick to <" ++ name ++ ">\n") client
+            runServer store'
         STxt n text -> do
             putStrLn "S: texting..."
+            _ <- runStateT (multiCastToClient n text) $ store
             runServer store
         Text text   -> do
             putStrLn $ "S: recving... " ++ text
-            runServer store
+            if roomID == -1
+            then do
+                _ <- sendTo sock ("-ERR you are not in any room\n") client
+                runServer store
+            else do
+                _ <- runStateT (multiCastToServer roomID (format text store client)) $ store
+                runServer store
 
 
 main :: IO ()
@@ -141,7 +166,8 @@ main = do
     setSocketOption sock ReusePort 1
     bindSocket sock (SockAddrInet port iNADDR_ANY)
     let store = ServerStore sock M.empty M.empty
+    (_, store') <- runStateT (registerServer 0 (SockAddrInet port iNADDR_ANY)) $ store
     putStrLn "Server starting..."
-    runServer store
+    runServer store'
     putStrLn "Server closing..."
     return ()

@@ -13,4 +13,5 @@ data Message = Join Int
              | Nick String
              | Part
              | Quit
+             | Kill
     deriving (Show, Eq)
