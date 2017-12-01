@@ -75,12 +75,6 @@ multiCastToClient n msg = do
             count <- sendTo sock ((nick client) ++ ": " ++ msg) addr
             return ()
 
-init :: Socket -> StateT ServerStore IO ()
-init sock = do
-    store <- get
-    put $ store {getSock = sock}
-
-
 -- multicast message to all servers (including itself)
 multiCastToServer :: Int -> String -> StateT ServerStore IO ()
 multiCastToServer n msg = do
@@ -103,40 +97,41 @@ parse :: String -> Infra.Message
 parse input =
     case words input of
         "/join" : xs    -> Join 0
-        "/text" : xs    -> Text $ unwords xs
+        "/text" : xs    -> STxt 0 $ unwords xs
         "/nick" : xs    -> Nick $ unwords xs
         "/part" : []    -> Part
         "/quit" : []    -> Quit
-        _               -> Quit
+        other           -> Text $ unwords other
 
 toString :: Infra.Message -> String
 toString (Text str) = str
 toString _          = "-ERR Not supported"
 
 -- should implement some kind of loop
-runServer :: Socket -> IO ()
-runServer sock = do
+runServer :: ServerStore -> IO ()
+runServer store = do
+    let sock = getSock store
     (msg, recv_count, client) <- recvFrom sock maxline
     let mesg = (unwords . lines) msg
     putStrLn ("S: " ++ mesg)
-    case mesg of
-        "/quit" -> do
+    case parse mesg of
+        Quit        -> do
             putStrLn "S: closing..."
-        "/part" -> do
+        Part        -> do
             putStrLn "S: parting..."
-            runServer sock
-        "/join" -> do
+            runServer store
+        Join n      -> do
             putStrLn "S: joining..."
-            runServer sock
-        "/nick" -> do
+            runServer store
+        Nick name   -> do
             putStrLn "S: nicking..."
-            runServer sock
-        "/text" -> do
+            runServer store
+        STxt n text -> do
             putStrLn "S: texting..."
-            runServer sock
-        text    -> do
+            runServer store
+        Text text   -> do
             putStrLn $ "S: recving... " ++ text
-            runServer sock
+            runServer store
 
 
 main :: IO ()
@@ -145,7 +140,8 @@ main = do
     setSocketOption sock ReuseAddr 1
     setSocketOption sock ReusePort 1
     bindSocket sock (SockAddrInet port iNADDR_ANY)
+    let store = ServerStore sock M.empty M.empty
     putStrLn "Server starting..."
-    runServer sock
+    runServer store
     putStrLn "Server closing..."
     return ()

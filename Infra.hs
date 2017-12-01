@@ -14,9 +14,3 @@ data Message = Join Int
              | Part
              | Quit
     deriving (Show, Eq)
-
--- readFrom :: SockAddr -> IO Message
--- readFrom addr = undefined
---
--- sendTo :: SockAddr -> Message -> IO ()
--- sendTo addr msg = undefined
