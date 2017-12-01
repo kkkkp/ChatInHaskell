@@ -167,7 +167,7 @@ main = do
     bindSocket sock (SockAddrInet port iNADDR_ANY)
     let store = ServerStore sock M.empty M.empty
     (_, store') <- runStateT (registerServer 0 (SockAddrInet port iNADDR_ANY)) $ store
-    putStrLn "Server starting..."
+    putStrLn "[Server " ++ (show port) ++ "] starting..."
     runServer store'
-    putStrLn "Server closing..."
+    putStrLn "[Server " ++ (show port) ++ "] closing..."
     return ()
