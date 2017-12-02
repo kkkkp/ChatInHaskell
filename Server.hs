@@ -14,10 +14,6 @@ data ClientStore = ClientStore {nick :: String, room :: Int} deriving (Show, Eq)
 
 data ServerStore = ServerStore {getSock :: Socket, getClient :: M.Map SockAddr ClientStore, getServer :: M.Map SockAddr Int} deriving (Show, Eq)
 
-port    = 4000
-host    = tupleToHostAddress (127, 0, 0, 1)
-maxline = 1500
-
 -- parse string to Message
 parse :: String -> Infra.Message
 parse input =
@@ -51,6 +47,15 @@ registerServer n addr = do
     store <- get
     let serverAddr = getServer store
     put $ store {getServer = M.insert addr n serverAddr}
+
+-- config servers
+configServer :: [PortNumber] -> Int -> StateT ServerStore IO ()
+configServer [] _ = do
+    store <- get
+    put $ store
+configServer (port : ports) n = do
+    registerServer n (SockAddrInet port Infra.host)
+    configServer ports (n + 1)
 
 -- register a client with addr to grp 0 (defualt)
 registerClient :: SockAddr -> StateT ServerStore IO ()
@@ -97,7 +102,7 @@ multiCastToClient n msg = do
         send sock msg addr client = do
             if room client == n
             then do
-                count <- sendTo sock (msg ++ "\n") addr
+                Infra.send sock (msg ++ "\n") addr
                 return ()
             else do
                 return ()
@@ -113,7 +118,7 @@ multiCastToServer n msg = do
     where
         send :: Socket -> ServerStore -> Int -> String -> SockAddr -> Int -> IO ()
         send sock store n msg addr _ = do
-            count <- sendTo sock (format n msg) addr
+            Infra.send sock (format n msg ++ "\n") addr
             return ()
 
 -- join handler
@@ -122,10 +127,10 @@ joinHandler sock roomID store n client = do
     if roomID == -1
     then do
         (_, store') <- runStateT (assignClient n client) $ store
-        _ <- sendTo sock ("+OK you join to #" ++ (show n) ++ "\n") client
+        Infra.send sock ("+OK you join to #" ++ (show n) ++ "\n") client
         runServer store'
     else do
-        _ <- sendTo sock ("-ERR you are in #" ++ (show roomID) ++ "\n") client
+        Infra.send sock ("-ERR you are in #" ++ (show roomID) ++ "\n") client
         runServer store
 
 -- nick handler
@@ -133,11 +138,11 @@ nickHandler :: Socket -> Int -> ServerStore -> SockAddr -> String -> IO ()
 nickHandler sock roomID store client name = do
     if roomID == -1
     then do
-        _ <- sendTo sock ("-ERR you are not in any room\n") client
+        Infra.send sock ("-ERR you are not in any room\n") client
         runServer store
     else do
         (_, store') <- runStateT (nickClient name client) $ store
-        _ <- sendTo sock ("+OK you nick to <" ++ name ++ ">\n") client
+        Infra.send sock ("+OK you nick to <" ++ name ++ ">\n") client
         runServer store'
 
 -- text handler
@@ -145,7 +150,7 @@ textHandler :: Socket -> Int -> ServerStore -> SockAddr -> String -> String -> I
 textHandler sock roomID store client text name = do
     if roomID == -1
     then do
-        _ <- sendTo sock ("-ERR you are not in any room\n") client
+        Infra.send sock ("-ERR you are not in any room\n") client
         runServer store
     else do
         _ <- runStateT (multiCastToServer roomID (name ++ ": " ++ text)) $ store
@@ -156,18 +161,18 @@ partHandler :: Socket -> Int -> ServerStore -> SockAddr -> IO ()
 partHandler sock roomID store client = do
     if roomID == -1
     then do
-        _ <- sendTo sock ("-ERR you are not in any room\n") client
+        Infra.send sock ("-ERR you are not in any room\n") client
         runServer store
     else do
         (_, store') <- runStateT (partClient client) $ store
-        _ <- sendTo sock ("+OK you leave #" ++ (show roomID) ++ "\n") client
+        Infra.send sock ("+OK you leave #" ++ (show roomID) ++ "\n") client
         runServer store'
 
 -- quit handler
 quitHandler :: Socket -> ServerStore -> SockAddr -> IO ()
 quitHandler sock store client = do
     (_, store') <- runStateT (partClient client) $ store
-    _ <- sendTo sock ("+OK you are disconnected\n") client
+    Infra.send sock ("+OK you are disconnected\n") client
     runServer store'
 
 -- serv handler
@@ -180,13 +185,13 @@ servHandler sock store addr n text = do
 runServer :: ServerStore -> IO ()
 runServer store = do
     let sock      = getSock store
-    (msg, recv_count, addr) <- recvFrom sock maxline
+    (msg, recv_count, addr) <- recvFrom sock Infra.maxline
     let serverMap = getServer store
     let mesg = (unwords . lines) msg
     let client   = addr
     let roomID   = getRoom store client
     let nickName = getNick store client
-
+    putStrLn $ "S <- <" ++ (show addr) ++ "> --- " ++ mesg
     case M.lookup addr serverMap of
         Just _  -> case parse mesg of
                     Serv n text -> servHandler sock store addr n text
@@ -199,18 +204,18 @@ runServer store = do
                     Quit        -> quitHandler sock store client
                     Kill        -> return ()
 
--- driver
-main :: IO ()
-main = do
+-- main driver
+main :: Int -> IO ()
+main i = do
+    let port = Infra.ports !! i
     sock <- socket AF_INET Datagram 0
     setSocketOption sock ReuseAddr 1
     setSocketOption sock ReusePort 1
     bindSocket sock (SockAddrInet port iNADDR_ANY)
     let store = ServerStore sock M.empty M.empty
-    (_, store') <- runStateT (registerServer 0 (SockAddrInet port host)) $ store
-
-    putStrLn $ "[Server " ++ (show port) ++ "] starting..."
+    (_, store') <- runStateT (configServer Infra.ports 0) $ store
+    putStrLn $ "[S" ++ (show port) ++ "] starting..."
     runServer store'
-    putStrLn $ "[Server " ++ (show port) ++ "] closing..."
-    
+    putStrLn $ "[S" ++ (show port) ++ "] closing..."
+
     return ()
