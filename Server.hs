@@ -42,14 +42,14 @@ getNick store addr = case M.lookup addr (getClient store) of
     Nothing     -> show addr
 
 -- register a server with id and addr
-registerServer :: Int -> SockAddr -> StateT ServerStore IO ()
+registerServer :: (MonadState ServerStore m) => Int -> SockAddr -> m ()
 registerServer n addr = do
     store <- get
     let serverAddr = getServer store
     put $ store {getServer = M.insert addr n serverAddr}
 
 -- config servers
-configServer :: [PortNumber] -> Int -> StateT ServerStore IO ()
+configServer :: (MonadState ServerStore m) => [PortNumber] -> Int -> m ()
 configServer [] _ = do
     store <- get
     put $ store
@@ -58,11 +58,11 @@ configServer (port : ports) n = do
     configServer ports (n + 1)
 
 -- register a client with addr to grp 0 (defualt)
-registerClient :: SockAddr -> StateT ServerStore IO ()
+registerClient :: (MonadState ServerStore m) => SockAddr -> m ()
 registerClient = assignClient 0
 
 -- assign a client to a different group
-assignClient :: Int -> SockAddr -> StateT ServerStore IO ()
+assignClient :: (MonadState ServerStore m) => Int -> SockAddr -> m ()
 assignClient n addr = do
     store <- get
     let client = ClientStore (show addr) n
@@ -70,7 +70,7 @@ assignClient n addr = do
     put $ store {getClient = M.insert addr client map}
 
 -- disconnect a client from the group
-partClient :: SockAddr -> StateT ServerStore IO ()
+partClient :: (MonadState ServerStore m) => SockAddr -> m ()
 partClient addr = do
     store <- get
     let map = getClient store
@@ -82,7 +82,7 @@ nickClientHelper name addr map = case M.lookup addr map of
     Nothing -> ClientStore name 0
 
 -- assign a client a nick name
-nickClient :: String -> SockAddr -> StateT ServerStore IO ()
+nickClient :: (MonadState ServerStore m) => String -> SockAddr -> m ()
 nickClient name addr = do
     store <- get
     let map    = getClient store

@@ -20,6 +20,12 @@ data Message = Join Int
              | Kill
     deriving (Show, Eq)
 
+-- class MonadSocket m s addr where
+--   send :: s -> String -> addr -> m ()
+--
+-- instance MonadSocket IO Socket SockAddr where
+
+
 send :: Socket -> String -> SockAddr -> IO ()
 send sock mesg addr = do
     putStr $ "S -> <" ++ (show addr) ++ "> --- " ++ mesg
