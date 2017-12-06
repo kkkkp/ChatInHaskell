@@ -12,12 +12,26 @@ import Test.QuickCheck
 import Network.Socket
 import qualified Data.Map as M
 import Control.Monad.State
+import Control.Monad (liftM, liftM2, liftM3)
 
-prop_join :: Socket -> Int -> Int -> Bool
-prop_join sock n p = M.member addr map where
-    port = Infra.intToPortNumber p
-    addr = (SockAddrInet port Config.host)
-    map  = getClient $ execState (assignClient n addr) $ ServerStore sock M.empty M.empty
+instance Arbitrary Server.ClientStore where
+    arbitrary = Server.ClientStore <$> (arbitrary :: Gen String) <*> (arbitrary :: Gen Int)
+
+instance Arbitrary SockAddr where
+    arbitrary = flip SockAddrInet Config.host <$> port where
+        port = Infra.intToPortNumber <$> (arbitrary :: Gen Int)
+
+instance Arbitrary Server.ServerStore where
+    arbitrary = Server.ServerStore <$> sock <*> clientInfo <*> serverInfo where
+        sock       = elements [Config.fakeSocket]
+        clients    = listOf $ liftM2 (,) arbitrary arbitrary
+        servers    = listOf $ liftM2 (,) arbitrary arbitrary
+        clientInfo = foldr (\(addr, client) map -> M.insert addr client map) M.empty <$> clients
+        serverInfo = foldr (\(addr, n) map -> M.insert addr n map) M.empty <$> servers
+
+prop_join :: Server.ServerStore -> Int -> SockAddr -> Bool
+prop_join store n addr = M.member addr map where
+    map  = getClient $ execState (assignClient n addr) $ store
 
 prop_join_s :: Bool
 prop_join_s = True
@@ -25,14 +39,12 @@ prop_join_s = True
 prop_join_f :: Bool
 prop_join_f = True
 
-prop_nick :: Socket -> String -> Int -> Bool
-prop_nick sock name p = name == nickName where
-    port     = Infra.intToPortNumber p
-    addr     = (SockAddrInet port Config.host)
-    map      = getClient $ execState (nickClient name addr) $ ServerStore sock M.empty M.empty
+prop_nick :: Server.ServerStore -> String -> SockAddr -> Bool
+prop_nick store name addr = name == nickName where
+    map      = getClient $ execState (nickClient name addr) $ store
     nickName = case M.lookup addr map of
         Just client -> nick client
-        Nothing -> "-ERR"
+        Nothing -> name ++ "-ERR"
 
 prop_nick_s :: Bool
 prop_nick_s = True
@@ -46,11 +58,9 @@ prop_send_s = True
 prop_send_f :: Bool
 prop_send_f = True
 
-prop_part :: Socket -> Int -> Bool
-prop_part sock p = not (M.member addr map) where
-    port = Infra.intToPortNumber p
-    addr = SockAddrInet port Config.host
-    map  = getClient $ execState (partClient addr) $ ServerStore sock M.empty M.empty
+prop_part :: Server.ServerStore -> SockAddr -> Bool
+prop_part store addr = not (M.member addr map) where
+    map  = getClient $ execState (partClient addr) $ store
 
 prop_part_s :: Bool
 prop_part_s = True
@@ -65,9 +75,7 @@ prop_multicast_server :: Bool
 prop_multicast_server = True
 
 test0 :: IO ()
-test0 = do
-    sock <- socket AF_INET Datagram 0
-    quickCheck ((prop_join sock) :: Int -> Int -> Bool)
+test0 = quickCheck (prop_join :: Server.ServerStore -> Int -> SockAddr -> Bool)
 
 test1 :: IO ()
 test1 = quickCheck (prop_join_s :: Bool)
@@ -76,9 +84,7 @@ test2 :: IO ()
 test2 = quickCheck (prop_join_f :: Bool)
 
 test3 :: IO ()
-test3 = do
-    sock <- socket AF_INET Datagram 0
-    quickCheck ((prop_nick sock) :: String -> Int -> Bool)
+test3 = quickCheck (prop_nick :: Server.ServerStore -> String -> SockAddr -> Bool)
 
 test4 :: IO ()
 test4 = quickCheck (prop_nick_s :: Bool)
@@ -93,9 +99,7 @@ test7 :: IO ()
 test7 = quickCheck (prop_send_f :: Bool)
 
 test8 :: IO ()
-test8 = do
-    sock <- socket AF_INET Datagram 0
-    quickCheck ((prop_part sock) :: Int -> Bool)
+test8 = quickCheck (prop_part :: Server.ServerStore -> SockAddr -> Bool)
 
 test9 :: IO ()
 test9 = quickCheck (prop_part_s :: Bool)
