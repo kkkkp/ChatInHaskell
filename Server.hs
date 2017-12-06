@@ -9,6 +9,7 @@ import Infra as Infra
 import qualified Data.Map as M
 import Control.Monad.State as S
 import Network.Socket
+import Config as Config
 
 data ClientStore = ClientStore {nick :: String, room :: Int} deriving (Show, Eq)
 
@@ -54,7 +55,7 @@ configServer [] _ = do
     store <- get
     put $ store
 configServer (port : ports) n = do
-    registerServer n (SockAddrInet port Infra.host)
+    registerServer n (SockAddrInet port Config.host)
     configServer ports (n + 1)
 
 -- register a client with addr to grp 0 (defualt)
@@ -185,7 +186,7 @@ servHandler sock store addr n text = do
 runServer :: ServerStore -> IO ()
 runServer store = do
     let sock      = getSock store
-    (msg, recv_count, addr) <- recvFrom sock Infra.maxline
+    (msg, recv_count, addr) <- recvFrom sock Config.maxline
     let serverMap = getServer store
     let mesg = (unwords . lines) msg
     let client   = addr
@@ -207,13 +208,13 @@ runServer store = do
 -- main driver
 main :: Int -> IO ()
 main i = do
-    let port = Infra.ports !! i
+    let port = Config.ports !! i
     sock <- socket AF_INET Datagram 0
     setSocketOption sock ReuseAddr 1
     setSocketOption sock ReusePort 1
     bindSocket sock (SockAddrInet port iNADDR_ANY)
     let store = ServerStore sock M.empty M.empty
-    (_, store') <- runStateT (configServer Infra.ports 0) $ store
+    (_, store') <- runStateT (configServer Config.ports 0) $ store
     putStrLn $ "[S" ++ (show port) ++ "] starting..."
     runServer store'
     putStrLn $ "[S" ++ (show port) ++ "] closing..."
