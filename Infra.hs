@@ -21,6 +21,8 @@ data Message = Join Int
 --
 -- instance MonadSocket IO Socket SockAddr where
 
+intToPortNumber :: Int -> PortNumber
+intToPortNumber n = if n >= 0 then read (show n) :: PortNumber else read "5000" :: PortNumber
 
 send :: Socket -> String -> SockAddr -> IO ()
 send sock mesg addr = do
