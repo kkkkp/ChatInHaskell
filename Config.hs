@@ -12,4 +12,6 @@ host       = tupleToHostAddress (127, 0, 0, 1)
 maxline    = 1500 :: Int
 ports      = [40000, 40001] :: [PortNumber]
 len        = length ports
-fakeSocket = unsafePerformIO $ socket AF_INET Datagram 0
+
+fakeSocket :: Socket
+fakeSocket = undefined

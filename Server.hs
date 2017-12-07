@@ -5,7 +5,7 @@
 
 module Server where
 
-import Infra as Infra
+import Infra as Infra hiding (ServerStore, ClientStore)
 import qualified Data.Map as M
 import Control.Monad.State as S
 import Network.Socket
@@ -123,28 +123,28 @@ multiCastToServer n msg = do
             return ()
 
 -- join handler
-joinHandler :: Socket -> Int -> ServerStore -> Int -> SockAddr -> IO ()
-joinHandler sock roomID store n client = do
-    if roomID == -1
-    then do
-        (_, store') <- runStateT (assignClient n client) $ store
-        Infra.send sock ("+OK you join to #" ++ (show n) ++ "\n") client
-        runServer store'
-    else do
-        Infra.send sock ("-ERR you are in #" ++ (show roomID) ++ "\n") client
-        runServer store
+joinHandler :: (MonadSocket m s) => s -> Int -> Int -> SockAddr -> StateT ServerStore m ()
+joinHandler sock roomID n client = do
+  if roomID == -1
+  then do
+      assignClient n client
+      lift $ mySend sock ("+OK you join to #" ++ (show n) ++ "\n") client
+      return ()
+  else do
+      lift $ mySend sock ("-ERR you are in #" ++ (show roomID) ++ "\n") client
+      return ()
 
 -- nick handler
-nickHandler :: Socket -> Int -> ServerStore -> SockAddr -> String -> IO ()
-nickHandler sock roomID store client name = do
+nickHandler :: (MonadSocket m s) => s -> Int-> SockAddr -> String -> StateT ServerStore m ()
+nickHandler sock roomID client name = do
     if roomID == -1
     then do
-        Infra.send sock ("-ERR you are not in any room\n") client
-        runServer store
+        lift $ mySend sock ("-ERR you are not in any room\n") client
+        return ()
     else do
-        (_, store') <- runStateT (nickClient name client) $ store
-        Infra.send sock ("+OK you nick to <" ++ name ++ ">\n") client
-        runServer store'
+        nickClient name client
+        lift $ mySend sock ("+OK you nick to <" ++ name ++ ">\n") client
+        return ()
 
 -- text handler
 textHandler :: Socket -> Int -> ServerStore -> SockAddr -> String -> String -> IO ()
@@ -154,27 +154,27 @@ textHandler sock roomID store client text name = do
         Infra.send sock ("-ERR you are not in any room\n") client
         runServer store
     else do
-        _ <- runStateT (multiCastToServer roomID (name ++ ": " ++ text)) $ store
+        _ <- runStateT (multiCastToServer roomID ("<" ++ name ++ "> " ++ text)) $ store
         runServer store
 
 -- part handler
-partHandler :: Socket -> Int -> ServerStore -> SockAddr -> IO ()
-partHandler sock roomID store client = do
+partHandler :: (MonadSocket m s) => s -> Int -> SockAddr -> StateT ServerStore m ()
+partHandler sock roomID client = do
     if roomID == -1
     then do
-        Infra.send sock ("-ERR you are not in any room\n") client
-        runServer store
+        lift $ mySend sock ("-ERR you are not in any room\n") client
+        return ()
     else do
-        (_, store') <- runStateT (partClient client) $ store
-        Infra.send sock ("+OK you leave #" ++ (show roomID) ++ "\n") client
-        runServer store'
+        partClient client
+        lift $ mySend sock ("+OK you leave #" ++ (show roomID) ++ "\n") client
+        return ()
 
 -- quit handler
-quitHandler :: Socket -> ServerStore -> SockAddr -> IO ()
-quitHandler sock store client = do
-    (_, store') <- runStateT (partClient client) $ store
-    Infra.send sock ("+OK you are disconnected\n") client
-    runServer store'
+quitHandler :: (MonadSocket m s) => s -> SockAddr -> StateT ServerStore m ()
+quitHandler sock client = do
+    partClient client
+    lift $ mySend sock ("+OK you are disconnected\n") client
+    return ()
 
 -- serv handler
 servHandler :: Socket -> ServerStore -> SockAddr -> Int -> String -> IO ()
@@ -198,11 +198,19 @@ runServer store = do
                     Serv n text -> servHandler sock store addr n text
                     _           -> runServer store
         Nothing -> case parse mesg of
-                    Join n      -> joinHandler sock roomID store n client
-                    Nick name   -> nickHandler sock roomID store client name
+                    Join n      -> do
+                        (_, store') <- runStateT (joinHandler sock roomID n client) store
+                        runServer store'
+                    Nick name   -> do
+                        (_, store') <- runStateT (nickHandler sock roomID client name) store
+                        runServer store'
                     Text text   -> textHandler sock roomID store client text nickName
-                    Part        -> partHandler sock roomID store client
-                    Quit        -> quitHandler sock store client
+                    Part        -> do
+                        (_, store') <- runStateT (partHandler sock roomID client) store
+                        runServer store'
+                    Quit        -> do
+                        (_, store') <- runStateT (quitHandler sock client) store
+                        runServer store'
                     Kill        -> return ()
 
 -- main driver
