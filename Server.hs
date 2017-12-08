@@ -5,7 +5,7 @@
 
 module Server where
 
-import Infra as Infra hiding (ServerStore, ClientStore)
+import Infra as Infra
 import qualified Data.Map as M
 import Control.Monad.State as S
 import Network.Socket
@@ -147,15 +147,13 @@ nickHandler sock roomID client name = do
         return ()
 
 -- text handler
-textHandler :: Socket -> Int -> ServerStore -> SockAddr -> String -> String -> IO ()
-textHandler sock roomID store client text name = do
+textHandler :: Socket -> Int -> SockAddr -> String -> String -> StateT ServerStore IO ()
+textHandler sock roomID client text name = do
     if roomID == -1
     then do
-        Infra.send sock ("-ERR you are not in any room\n") client
-        runServer store
+        lift $ mySend sock ("-ERR you are not in any room\n") client
     else do
-        _ <- runStateT (multiCastToServer roomID ("<" ++ name ++ "> " ++ text)) $ store
-        runServer store
+        multiCastToServer roomID ("<" ++ name ++ "> " ++ text)
 
 -- part handler
 partHandler :: (MonadSocket m s) => s -> Int -> SockAddr -> StateT ServerStore m ()
@@ -177,10 +175,8 @@ quitHandler sock client = do
     return ()
 
 -- serv handler
-servHandler :: Socket -> ServerStore -> SockAddr -> Int -> String -> IO ()
-servHandler sock store addr n text = do
-    _ <- runStateT (multiCastToClient n text) $ store
-    runServer store
+servHandler :: Socket -> SockAddr -> Int -> String -> StateT ServerStore IO ()
+servHandler sock addr n text = multiCastToClient n text
 
 -- one iter of a running
 runServer :: ServerStore -> IO ()
@@ -195,7 +191,9 @@ runServer store = do
     putStrLn $ "S <- <" ++ (show addr) ++ "> --- " ++ mesg
     case M.lookup addr serverMap of
         Just _  -> case parse mesg of
-                    Serv n text -> servHandler sock store addr n text
+                    Serv n text -> do
+                        (_, store') <- runStateT (servHandler sock addr n text) store
+                        runServer store'
                     _           -> runServer store
         Nothing -> case parse mesg of
                     Join n      -> do
@@ -204,7 +202,9 @@ runServer store = do
                     Nick name   -> do
                         (_, store') <- runStateT (nickHandler sock roomID client name) store
                         runServer store'
-                    Text text   -> textHandler sock roomID store client text nickName
+                    Text text   -> do
+                        (_, store') <- runStateT (textHandler sock roomID client text nickName) store
+                        runServer store'
                     Part        -> do
                         (_, store') <- runStateT (partHandler sock roomID client) store
                         runServer store'

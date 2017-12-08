@@ -22,7 +22,6 @@ class Monad m => MonadSocket m s where
   mySend :: s -> String -> SockAddr -> m ()
 
 instance MonadSocket IO Socket where
-  -- mySend :: Socket -> String -> SockAddr -> IO ()
   mySend sock mesg addr = do
     putStr $ "S -> <" ++ (show addr) ++ "> --- " ++ mesg
     _ <- sendTo sock mesg addr
