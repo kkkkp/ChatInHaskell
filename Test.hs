@@ -1,11 +1,14 @@
 {-# LANGUAGE
   TypeFamilies
 , FlexibleContexts
+, MultiParamTypeClasses
+, TypeSynonymInstances
+, FlexibleInstances
 #-}
 
-{-# OPTIONS_GHC
-    -w
-#-}
+-- {-# OPTIONS_GHC
+--     -w
+-- #-}
 
 module Test where
 
@@ -16,6 +19,22 @@ import Network.Socket
 import qualified Data.Map as M
 import Control.Monad.State
 import Control.Monad (liftM, liftM2, liftM3)
+import Data.List
+
+data TestStore = TestStore {
+    getMesgMap :: M.Map SockAddr String
+}
+
+type TestMonad = State TestStore
+
+-- TODO: which monad should I use for test?
+-- State
+-- TODO: can I change the () -> a? What should I return if change to a?
+instance MonadSocket TestMonad Int where
+    mySend n mesg addr = do
+        store <- get
+        let map = getMesgMap store
+        put $ store {getMesgMap = M.insert addr mesg map}
 
 instance Arbitrary ClientStore where
     arbitrary = ClientStore <$> (arbitrary :: Gen String) <*> (arbitrary :: Gen Int)
@@ -31,16 +50,28 @@ instance Arbitrary ServerStore where
         clientInfo = foldr (\(addr, client) map -> M.insert addr client map) M.empty <$> clients
         serverInfo = foldr (\(addr, n) map -> M.insert addr n map) M.empty <$> servers
 
+-- test join will add the sockaddr to the store
 prop_join :: ServerStore -> Int -> SockAddr -> Bool
 prop_join store n addr = M.member addr map where
     map  = getClient $ execState (assignClient n addr) $ store
 
-prop_join_s :: Bool
-prop_join_s = True
+f :: ServerStore -> TestStore
+f = undefined
 
+-- test "+OK" response for join
+prop_join_s :: Int -> Int -> Int -> SockAddr -> Bool
+prop_join_s sock roomID n addr = flag where
+    map = getMesgMap $ execState (execStateT (joinHandler sock roomID n addr) (ServerStore M.empty M.empty)) (TestStore M.empty)
+    mesg = case M.lookup addr map of
+        Just m  -> m
+        Nothing -> "#ERR"
+    flag = if roomID == -1 then isPrefixOf "+OK" mesg else isPrefixOf "-ERR" mesg
+
+-- test "-ERR" response for join
 prop_join_f :: Bool
 prop_join_f = True
 
+-- test nick will change the name in the store
 prop_nick :: ServerStore -> String -> SockAddr -> Bool
 prop_nick store name addr = name == nickName where
     map      = getClient $ execState (nickClient name addr) $ store
@@ -48,22 +79,28 @@ prop_nick store name addr = name == nickName where
         Just client -> nick client
         Nothing -> name ++ "-ERR"
 
+-- test "+OK" response for nick
 prop_nick_s :: Bool
 prop_nick_s = True
 
+-- test "-ERR" response for nick
 prop_nick_f :: Bool
 prop_nick_f = True
 
-prop_send_s :: Bool
-prop_send_s = True
+-- test "+OK" response for text
+prop_text_s :: Bool
+prop_text_s = True
 
-prop_send_f :: Bool
-prop_send_f = True
+-- test "-ERR" response for text
+prop_text_f :: Bool
+prop_text_f = True
 
+-- test part will remove the sockaddr from the store
 prop_part :: ServerStore -> SockAddr -> Bool
 prop_part store addr = not (M.member addr map) where
     map  = getClient $ execState (partClient addr) $ store
 
+-- test "+OK" response for part
 prop_part_s :: Bool
 prop_part_s = True
 
@@ -80,7 +117,7 @@ test0 :: IO ()
 test0 = quickCheck (prop_join :: ServerStore -> Int -> SockAddr -> Bool)
 
 test1 :: IO ()
-test1 = quickCheck (prop_join_s :: Bool)
+test1 = quickCheck (prop_join_s :: Int -> Int -> Int -> SockAddr -> Bool)
 
 test2 :: IO ()
 test2 = quickCheck (prop_join_f :: Bool)
@@ -95,10 +132,10 @@ test5 :: IO ()
 test5 = quickCheck (prop_nick_f :: Bool)
 
 test6 :: IO ()
-test6 = quickCheck (prop_send_s :: Bool)
+test6 = quickCheck (prop_text_s :: Bool)
 
 test7 :: IO ()
-test7 = quickCheck (prop_send_f :: Bool)
+test7 = quickCheck (prop_text_f :: Bool)
 
 test8 :: IO ()
 test8 = quickCheck (prop_part :: ServerStore -> SockAddr -> Bool)
