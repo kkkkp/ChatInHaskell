@@ -20,6 +20,7 @@ import qualified Data.Map as M
 import Control.Monad.State
 import Control.Monad (liftM, liftM2, liftM3)
 import Data.List
+import Data.Functor.Classes
 
 data TestStore = TestStore {
     getMesgMap :: M.Map SockAddr String
@@ -56,17 +57,12 @@ prop_join :: ServerStore -> Int -> SockAddr -> Bool
 prop_join store n addr = M.member addr map where
     map  = getClient $ execState (assignClient n addr) $ store
 
-f :: ServerStore -> TestStore
-f = undefined
-
 -- test response for join handler
 prop_join_handler :: Int -> Int -> SockAddr -> ServerStore -> Bool
 prop_join_handler sock n addr store = flag where
     roomID = getRoom store addr
     map    = getMesgMap $ execState (execStateT (joinHandler sock n addr) store) $ TestStore M.empty
-    mesg   = case M.lookup addr map of
-        Just m  -> m
-        Nothing -> "#ERR"
+    mesg   = M.findWithDefault "#ERR" addr map
     flag   = if roomID == -1 then isPrefixOf "+OK" mesg else isPrefixOf "-ERR" mesg
 
 -- test nick will change the name in the store
@@ -82,17 +78,17 @@ prop_nick_handler :: Int -> SockAddr -> String -> ServerStore -> Bool
 prop_nick_handler sock addr name store = flag where
     roomID = getRoom store addr
     map    = getMesgMap $ execState (execStateT (nickHandler sock addr name) store) $ TestStore M.empty
-    mesg   = case M.lookup addr map of
-        Just m  -> m
-        Nothing -> "#ERR"
+    mesg   = M.findWithDefault "#ERR" addr map
     flag   = if roomID /= -1 then isPrefixOf "+OK" mesg else isPrefixOf "-ERR" mesg
 
 -- test response for text handler
 prop_text_handler :: Int -> SockAddr -> String -> String -> ServerStore -> Bool
 prop_text_handler sock client text name store = flag where
+    roomID  = getRoom store client
     servers = getServer store
     map     = getMesgMap $ execState (execStateT (textHandler sock client text name) store) $ TestStore M.empty
-    flag    = True
+    mesg    = M.findWithDefault "#ERR" client map
+    flag    = if roomID == -1 then isPrefixOf "-ERR" mesg else prop_multicast_server sock roomID ("<" ++ name ++ "> " ++ text) store
 
 -- test part will remove the sockaddr from the store
 prop_part :: ServerStore -> SockAddr -> Bool
@@ -104,51 +100,63 @@ prop_part_handler :: Int -> SockAddr -> ServerStore -> Bool
 prop_part_handler sock addr store = flag where
     roomID = getRoom store addr
     map    = getMesgMap $ execState (execStateT (partHandler sock addr) store) $ TestStore M.empty
-    mesg   = case M.lookup addr map of
-        Just m  -> m
-        Nothing -> "#ERR"
+    mesg   = M.findWithDefault "#ERR" addr map
     flag   = if roomID /= -1 then isPrefixOf "+OK" mesg else isPrefixOf "-ERR" mesg
 
 -- test multicast_client deliver mesg to all clients
 prop_multicast_client :: Int -> Int -> String -> ServerStore -> Bool
 prop_multicast_client sock n mesg store = flag where
-    clients = getClient store
-    map     = getMesgMap $ execState (execStateT (multiCastToClient sock n mesg) store) $ TestStore M.empty
-    flag    = True
+    clients  = M.filter (\c -> room c == n) $ getClient store
+    map      = getMesgMap $ execState (execStateT (multiCastToClient sock n mesg) store) $ TestStore M.empty
+    expected = mesg ++ "\n"
+    flag     = M.size clients == M.size map && M.foldWithKey (\addr msg base -> M.member addr clients && msg == expected && base) True map
+
 
 -- test multicast_server deliver mesg to all servers
+-- TODO: how to use liftEq?
+-- flag    = liftEq (\a b -> b == mesg) servers map
 prop_multicast_server :: Int -> Int -> String -> ServerStore -> Bool
 prop_multicast_server sock n mesg store = flag where
-    servers = getServer store
-    map     = getMesgMap $ execState (execStateT (multiCastToServer sock n mesg) store) $ TestStore M.empty
-    flag    = True
+    servers  = getServer store
+    map      = getMesgMap $ execState (execStateT (multiCastToServer sock n mesg) store) $ TestStore M.empty
+    expected = format n mesg ++ "\n"
+    flag     = M.size servers == M.size map && M.foldWithKey (\addr msg base -> M.member addr servers && msg == expected && base) True map
 
 test1 :: IO ()
-test1 = quickCheck (prop_join :: ServerStore -> Int -> SockAddr -> Bool)
+test1 = quickCheck
+        (prop_join             :: ServerStore -> Int -> SockAddr -> Bool)
 
 test2 :: IO ()
-test2 = quickCheck (prop_join_handler :: Int -> Int -> SockAddr -> ServerStore -> Bool)
+test2 = quickCheck
+        (prop_join_handler     :: Int -> Int -> SockAddr -> ServerStore -> Bool)
 
 test3 :: IO ()
-test3 = quickCheck (prop_nick :: ServerStore -> String -> SockAddr -> Bool)
+test3 = quickCheck
+        (prop_nick             :: ServerStore -> String -> SockAddr -> Bool)
 
 test4 :: IO ()
-test4 = quickCheck (prop_nick_handler :: Int -> SockAddr -> String -> ServerStore -> Bool)
+test4 = quickCheck
+        (prop_nick_handler     :: Int -> SockAddr -> String -> ServerStore -> Bool)
 
 test5 :: IO ()
-test5 = quickCheck (prop_text_handler :: Int -> SockAddr -> String -> String -> ServerStore -> Bool)
+test5 = quickCheck
+        (prop_text_handler     :: Int -> SockAddr -> String -> String -> ServerStore -> Bool)
 
 test6 :: IO ()
-test6 = quickCheck (prop_part :: ServerStore -> SockAddr -> Bool)
+test6 = quickCheck
+        (prop_part             :: ServerStore -> SockAddr -> Bool)
 
 test7 :: IO ()
-test7 = quickCheck (prop_part_handler :: Int -> SockAddr -> ServerStore -> Bool)
+test7 = quickCheck
+        (prop_part_handler     :: Int -> SockAddr -> ServerStore -> Bool)
 
 test8 :: IO ()
-test8 = quickCheck (prop_multicast_client :: Int -> Int -> String -> ServerStore -> Bool)
+test8 = quickCheck
+        (prop_multicast_client :: Int -> Int -> String -> ServerStore -> Bool)
 
 test9 :: IO ()
-test9 = quickCheck (prop_multicast_server :: Int -> Int -> String -> ServerStore -> Bool)
+test9 = quickCheck
+        (prop_multicast_server :: Int -> Int -> String -> ServerStore -> Bool)
 
 runTests :: IO ()
 runTests = test1 >> test2 >> test3 >> test4 >> test5 >> test6 >> test7 >> test8 >> test9
