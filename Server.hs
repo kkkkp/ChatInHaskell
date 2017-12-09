@@ -30,7 +30,6 @@ runServer sock store = do
     let serverMap = getServer store
     let mesg = (unwords . lines) msg
     let client   = addr
-    let roomID   = getRoom store client
     let nickName = getNick store client
     putStrLn $ "S <- <" ++ (show addr) ++ "> --- " ++ mesg
     case M.lookup addr serverMap of
@@ -41,16 +40,16 @@ runServer sock store = do
                     _           -> runServer sock store
         Nothing -> case parse mesg of
                     Join n      -> do
-                        (_, store') <- runStateT (joinHandler sock roomID n client) store
+                        (_, store') <- runStateT (joinHandler sock n client) store
                         runServer sock store'
                     Nick name   -> do
-                        (_, store') <- runStateT (nickHandler sock roomID client name) store
+                        (_, store') <- runStateT (nickHandler sock client name) store
                         runServer sock store'
                     Text text   -> do
-                        (_, store') <- runStateT (textHandler sock roomID client text nickName) store
+                        (_, store') <- runStateT (textHandler sock client text nickName) store
                         runServer sock store'
                     Part        -> do
-                        (_, store') <- runStateT (partHandler sock roomID client) store
+                        (_, store') <- runStateT (partHandler sock client) store
                         runServer sock store'
                     Quit        -> do
                         (_, store') <- runStateT (quitHandler sock client) store

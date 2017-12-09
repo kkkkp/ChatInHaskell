@@ -59,17 +59,14 @@ f :: ServerStore -> TestStore
 f = undefined
 
 -- test "+OK" response for join
-prop_join_s :: Int -> Int -> Int -> SockAddr -> Bool
-prop_join_s sock roomID n addr = flag where
-    map = getMesgMap $ execState (execStateT (joinHandler sock roomID n addr) (ServerStore M.empty M.empty)) (TestStore M.empty)
-    mesg = case M.lookup addr map of
+prop_join_handler :: Int -> Int -> SockAddr -> ServerStore -> Bool
+prop_join_handler sock n addr store = flag where
+    roomID = getRoom store addr
+    map    = getMesgMap $ execState (execStateT (joinHandler sock n addr) store) $ TestStore M.empty
+    mesg   = case M.lookup addr map of
         Just m  -> m
         Nothing -> "#ERR"
-    flag = if roomID == -1 then isPrefixOf "+OK" mesg else isPrefixOf "-ERR" mesg
-
--- test "-ERR" response for join
-prop_join_f :: Bool
-prop_join_f = True
+    flag   = if roomID == -1 then isPrefixOf "+OK" mesg else isPrefixOf "-ERR" mesg
 
 -- test nick will change the name in the store
 prop_nick :: ServerStore -> String -> SockAddr -> Bool
@@ -80,20 +77,18 @@ prop_nick store name addr = name == nickName where
         Nothing -> name ++ "-ERR"
 
 -- test "+OK" response for nick
-prop_nick_s :: Bool
-prop_nick_s = True
-
--- test "-ERR" response for nick
-prop_nick_f :: Bool
-prop_nick_f = True
+prop_nick_handler :: Int -> SockAddr -> String -> ServerStore -> Bool
+prop_nick_handler sock addr name store = flag where
+    roomID = getRoom store addr
+    map    = getMesgMap $ execState (execStateT (nickHandler sock addr name) store) $ TestStore M.empty
+    mesg   = case M.lookup addr map of
+        Just m  -> m
+        Nothing -> "#ERR"
+    flag   = if roomID /= -1 then isPrefixOf "+OK" mesg else isPrefixOf "-ERR" mesg
 
 -- test "+OK" response for text
-prop_text_s :: Bool
-prop_text_s = True
-
--- test "-ERR" response for text
-prop_text_f :: Bool
-prop_text_f = True
+prop_text_handler :: Int -> SockAddr -> String -> String -> ServerStore -> Bool
+prop_text_handler sock client text name store = True
 
 -- test part will remove the sockaddr from the store
 prop_part :: ServerStore -> SockAddr -> Bool
@@ -101,11 +96,14 @@ prop_part store addr = not (M.member addr map) where
     map  = getClient $ execState (partClient addr) $ store
 
 -- test "+OK" response for part
-prop_part_s :: Bool
-prop_part_s = True
-
-prop_part_f :: Bool
-prop_part_f = True
+prop_part_handler :: Int -> SockAddr -> ServerStore -> Bool
+prop_part_handler sock addr store = flag where
+    roomID = getRoom store addr
+    map    = getMesgMap $ execState (execStateT (partHandler sock addr) store) $ TestStore M.empty
+    mesg   = case M.lookup addr map of
+        Just m  -> m
+        Nothing -> "#ERR"
+    flag   = if roomID /= -1 then isPrefixOf "+OK" mesg else isPrefixOf "-ERR" mesg
 
 prop_multicast_client :: Bool
 prop_multicast_client = True
@@ -113,47 +111,35 @@ prop_multicast_client = True
 prop_multicast_server :: Bool
 prop_multicast_server = True
 
-test0 :: IO ()
-test0 = quickCheck (prop_join :: ServerStore -> Int -> SockAddr -> Bool)
-
 test1 :: IO ()
-test1 = quickCheck (prop_join_s :: Int -> Int -> Int -> SockAddr -> Bool)
+test1 = quickCheck (prop_join :: ServerStore -> Int -> SockAddr -> Bool)
 
 test2 :: IO ()
-test2 = quickCheck (prop_join_f :: Bool)
+test2 = quickCheck (prop_join_handler :: Int -> Int -> SockAddr -> ServerStore -> Bool)
 
 test3 :: IO ()
 test3 = quickCheck (prop_nick :: ServerStore -> String -> SockAddr -> Bool)
 
 test4 :: IO ()
-test4 = quickCheck (prop_nick_s :: Bool)
+test4 = quickCheck (prop_nick_handler :: Int -> SockAddr -> String -> ServerStore -> Bool)
 
 test5 :: IO ()
-test5 = quickCheck (prop_nick_f :: Bool)
+test5 = quickCheck (prop_text_handler :: Int -> SockAddr -> String -> String -> ServerStore -> Bool)
 
 test6 :: IO ()
-test6 = quickCheck (prop_text_s :: Bool)
+test6 = quickCheck (prop_part :: ServerStore -> SockAddr -> Bool)
 
 test7 :: IO ()
-test7 = quickCheck (prop_text_f :: Bool)
+test7 = quickCheck (prop_part_handler :: Int -> SockAddr -> ServerStore -> Bool)
 
 test8 :: IO ()
-test8 = quickCheck (prop_part :: ServerStore -> SockAddr -> Bool)
+test8 = quickCheck (prop_multicast_client :: Bool)
 
 test9 :: IO ()
-test9 = quickCheck (prop_part_s :: Bool)
-
-test10 :: IO ()
-test10 = quickCheck (prop_part_f :: Bool)
-
-test11 :: IO ()
-test11 = quickCheck (prop_multicast_client :: Bool)
-
-test12 :: IO ()
-test12 = quickCheck (prop_multicast_server :: Bool)
+test9 = quickCheck (prop_multicast_server :: Bool)
 
 runTests :: IO ()
-runTests = test0 >> test1 >> test2 >> test3 >> test4 >> test5 >> test6 >> test7 >> test8 >> test9 >> test10 >> test11 >> test12
+runTests = test1 >> test2 >> test3 >> test4 >> test5 >> test6 >> test7 >> test8 >> test9
 
 main :: IO ()
 main = do

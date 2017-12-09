@@ -145,8 +145,10 @@ multiCastToServer sock n msg = do
             return ()
 
 -- join handler
-joinHandler :: (MonadSocket m s) => s -> Int -> Int -> SockAddr -> StateT ServerStore m ()
-joinHandler sock roomID n client = do
+joinHandler :: (MonadSocket m s) => s -> Int -> SockAddr -> StateT ServerStore m ()
+joinHandler sock n client = do
+  store <- get
+  let roomID = getRoom store client
   if roomID == -1
   then do
       assignClient n client
@@ -157,8 +159,10 @@ joinHandler sock roomID n client = do
       return ()
 
 -- nick handler
-nickHandler :: (MonadSocket m s) => s -> Int-> SockAddr -> String -> StateT ServerStore m ()
-nickHandler sock roomID client name = do
+nickHandler :: (MonadSocket m s) => s -> SockAddr -> String -> StateT ServerStore m ()
+nickHandler sock client name = do
+    store <- get
+    let roomID = getRoom store client
     if roomID == -1
     then do
         lift $ mySend sock ("-ERR you are not in any room\n") client
@@ -169,8 +173,10 @@ nickHandler sock roomID client name = do
         return ()
 
 -- text handler
-textHandler :: (MonadSocket m s) => s -> Int -> SockAddr -> String -> String -> StateT ServerStore m ()
-textHandler sock roomID client text name = do
+textHandler :: (MonadSocket m s) => s -> SockAddr -> String -> String -> StateT ServerStore m ()
+textHandler sock client text name = do
+    store <- get
+    let roomID = getRoom store client
     if roomID == -1
     then do
         lift $ mySend sock ("-ERR you are not in any room\n") client
@@ -178,8 +184,10 @@ textHandler sock roomID client text name = do
         multiCastToServer sock roomID ("<" ++ name ++ "> " ++ text)
 
 -- part handler
-partHandler :: (MonadSocket m s) => s -> Int -> SockAddr -> StateT ServerStore m ()
-partHandler sock roomID client = do
+partHandler :: (MonadSocket m s) => s -> SockAddr -> StateT ServerStore m ()
+partHandler sock client = do
+    store <- get
+    let roomID = getRoom store client
     if roomID == -1
     then do
         lift $ mySend sock ("-ERR you are not in any room\n") client
