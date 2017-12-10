@@ -15,6 +15,7 @@ import qualified Data.Map as M
 import Control.Monad.State as S
 import Network.Socket
 import Config
+import qualified Text.Read as Read
 
 -- instantiate an instance of monad socket
 instance MonadSocket IO Socket where
@@ -56,10 +57,26 @@ runServer sock store = do
                         runServer sock store'
                     Kill        -> return ()
 
+-- int reader
+readPortNumber :: String -> Maybe PortNumber
+readPortNumber = Read.readMaybe
+
+-- select a port
+portSelector :: IO PortNumber
+portSelector = do
+    putStrLn $ "Available ports: " ++ (show ports)
+    putStr $ "Select a valid port to listen: "
+    str <- getLine
+    case readPortNumber str of
+        Just n  -> if elem n ports
+                   then return n
+                   else portSelector
+        Nothing -> portSelector
+
 -- main driver
-main :: Int -> IO ()
-main i = do
-    let port = ports !! i
+main :: IO ()
+main = do
+    port <- portSelector
     sock <- socket AF_INET Datagram 0
     setSocketOption sock ReuseAddr 1
     setSocketOption sock ReusePort 1
