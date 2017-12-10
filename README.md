@@ -1,4 +1,6 @@
-## Description
+# Fully Distributed Chat System in Haskell
+
+## Introduction
 This is a distributed chat system written in Haskell.
 
 
